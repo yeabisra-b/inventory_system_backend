@@ -1,4 +1,4 @@
-import { pool } from "../db/index.js";
+import { pool } from "../db/db.js";
 
 export const getAllCategories = async (req, res) => {
   try {
@@ -80,7 +80,7 @@ export const updateCategory = async (req, res) => {
     const db_result = await pool.query(`select * from categories where id=$1`, [
       id,
     ]);
-    if (!db_result.rows[0]) {
+    if (db_result.rows.length === 0) {
       return res.status(404).json({ message: "category not found" });
     }
     const { name, description } = { ...db_result.rows[0], ...req.body };
