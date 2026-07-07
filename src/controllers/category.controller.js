@@ -15,8 +15,10 @@ export const getAllCategories = async (req, res) => {
 export const getCategory = async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const result = await pool.query(`select * from categories where id=$1`,[id]);
-    res.status(200).json(result.rows);
+    const result = await pool.query(`select * from categories where id=$1`, [
+      id,
+    ]);
+    res.status(200).json(result.rows[0]);
   } catch (err) {
     console.log(err);
     result.status(500).json({
@@ -55,3 +57,45 @@ export const createCategory = async (req, res) => {
     });
   }
 };
+
+export const updateCategory = async (req, res) => {
+  try {
+    const id = req.body.id;
+    console.log(req.body);
+    const db_result = await pool.query(`select * from categories where id=$1`, [
+      id,
+    ]);
+    const { name, description } = { ...db_result.rows[0], ...req.body };
+    console.log(description);
+    const result = await pool.query(
+      `update categories
+       set name = $1, description = $2 
+       where id = $3 
+       returning *;`,
+      [name, description, id],
+    );
+
+    res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.log(err.code);
+    res.status(404).json({ message: "not found" });
+  }
+};
+
+export const deleteCategory = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const result = await pool.query(
+      `delete from categories
+         where id = $1
+          returning *`,
+      [id],
+    );
+    console.log(result.rows[0]);
+    res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.log(err.code);
+    res.status(404).json({ message: "not found" });
+  }
+};
+
