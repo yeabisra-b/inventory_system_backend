@@ -5,7 +5,7 @@ export const getAllCategories = async (req, res) => {
     const result = await pool.query("select * from categories");
     return res.status(200).json(result.rows);
   } catch (err) {
-    console.log(err);
+    console.error(err);
     return res.status(500).json({
       message: "Failed to retrieve categories.",
     });
@@ -29,7 +29,7 @@ export const getCategory = async (req, res) => {
     }
     return res.status(200).json(result.rows[0]);
   } catch (err) {
-    console.log(err);
+    console.error(err);
     return res.status(500).json({
       message: "server error",
     });
@@ -62,7 +62,6 @@ export const createCategory = async (req, res) => {
     }
 
     console.error(err);
-
     return res.status(500).json({
       message: "Failed to create category.",
     });
@@ -100,7 +99,7 @@ export const updateCategory = async (req, res) => {
 
     return res.status(200).json(result.rows[0]);
   } catch (err) {
-    console.log(err);
+    console.error(err);
     return res.status(500).json({ message: "server error" });
   }
 };
@@ -122,7 +121,7 @@ export const deleteCategory = async (req, res) => {
     }
     return res.status(200).json(result.rows[0]);
   } catch (err) {
-    console.log(err.code);
+    console.error(err.code);
     return res.status(500).json({ message: "server error" });
   }
 };
