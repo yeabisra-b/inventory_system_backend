@@ -13,10 +13,9 @@ export const getParts = async (req, res) => {
 export const getPartByID = async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
-    console.log(id);
 
     if (!Number.isInteger(id)) {
-      return res.status(400).json({ message: "invalid part id" });
+      return res.status(400).json({ message: "Invalid part id" });
     }
 
     const result = await pool.query(`select * from parts where id=$1`, [id]);
@@ -67,7 +66,7 @@ export const updatePart = async (req, res) => {
     const id = Number.parseInt(req.params.id, 10);
 
     if (!Number.isInteger(id)) {
-      return res.status(400).json({ message: "invalid Part id" });
+      return res.status(400).json({ message: "Invalid Part id" });
     }
 
     const db_result = await pool.query(`select * from parts where id=$1`, [id]);
@@ -152,5 +151,49 @@ export const deletePart = async (req, res) => {
     console.error(err);
 
     return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const searchParts = async (req, res) => {
+  try {
+    const { q, category } = req.query;
+
+    const searchTerm = q?.trim();
+
+    if (!searchTerm) {
+      return res.status(400).json({
+        message: "Search term is required.",
+      });
+    }
+    let query = `select p.id,
+                        p.name,
+                        p.description,
+                        p.quantity,
+                        p.unit_price,
+                        p.created_at,
+                        p.updated_at,
+                        c.id as category_id,
+                        c.name as category 
+                        from parts p
+                        join categories c
+                        on p.category_id = c.id
+                        where p.name ilike $1 || '%'
+                        `;
+
+    let query_parameters = [searchTerm];
+    if (category?.trim()) {
+      query += ` and c.name = $2`;
+      query_parameters.push(category);
+    }
+
+    const result = await pool.query(query, query_parameters);
+
+    return res.status(200).json(result.rows);
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      message: "Internal server error",
+    });
   }
 };
