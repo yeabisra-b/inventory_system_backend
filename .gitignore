@@ -18,7 +18,6 @@ pnpm-debug.log*
 /build
 /.next
 
-
 # OS files
 .DS_Store
 Thumbs.db

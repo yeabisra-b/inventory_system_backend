@@ -35,57 +35,70 @@ export const getStockMovementByPartID = async (req, res) => {
 };
 
 export const stockIn = async (req, res) => {
+  const client = await pool.connect();
   try {
     const { part_id, quantity, reason } = { ...req.body };
 
-    const result = await pool.query(
+    await client.query("BEGIN");
+
+    const result = await client.query(
       `insert into 
       stock_movements(movement_type,part_id,quantity,reason)
       values('IN',$1,$2,$3) returning *`,
       [part_id, quantity, reason],
     );
 
+    const update_quantity = await client.query(
+      `update parts set quantity = quantity + $1 where id = $2`,
+      [quantity, part_id],
+    );
+
+    await client.query("COMMIT");
     return res.status(201).json(result.rows[0]);
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error(err);
     return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    client.release();
   }
 };
 
 export const stockOut = async (req, res) => {
+  const client = await pool.connect();
   try {
     const { part_id, quantity, reason } = { ...req.body };
-
-    const balanceResult = await pool.query(
-      `SELECT COALESCE(SUM(quantity), 0) AS current_balance 
-       FROM stock_movements 
-       WHERE part_id = $1`,
-      [part_id],
-    );
-
-    const currentBalance = Number.parseInt(
-      balanceResult.rows[0].current_balance,
-      10,
-    );
-
-    if (currentBalance < parsedQuantity) {
-      return res.status(400).json({
-        message: `Insufficient inventory. Available stock: ${currentBalance}, requested: ${parsedQuantity}.`,
-      });
-    }
-
     const negated_quantity = Number.parseInt(quantity) * -1;
 
-    const result = await pool.query(
+    await client.query("BEGIN");
+
+    const result = await client.query(
       `insert into 
       stock_movements(movement_type,part_id,quantity,reason)
       values('OUT',$1,$2,$3) returning *`,
       [part_id, negated_quantity, reason],
     );
 
+    const update_quantity = await client.query(
+      `update parts set quantity = quantity + $1 where id = $2`,
+      [negated_quantity, part_id],
+    );
+
+    await client.query("COMMIT");
+
     return res.status(201).json(result.rows[0]);
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error(err);
+
+    if (err.code === "23514") {
+      return res.status(400).json({
+        message: "Insufficient inventory stock.",
+      });
+    }
+
     return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    client.release();
   }
 };
