@@ -2,7 +2,12 @@ import { pool } from "../db/db.js";
 
 export const getParts = async (req, res) => {
   try {
-    const result = await pool.query(`select * from parts`);
+    const result = await pool.query(`
+      SELECT p.*, c.name as category 
+      FROM parts p 
+      LEFT JOIN categories c ON p.category_id = c.id
+      ORDER BY p.id ASC
+    `);
     return res.status(200).json(result.rows);
   } catch (err) {
     console.error(err);
@@ -33,18 +38,16 @@ export const getPartByID = async (req, res) => {
 
 export const createPart = async (req, res) => {
   try {
-    const { name, description, category, unit_price } = req.body;
+    const { name, description, category_id, unit_price } = req.body;
 
     const quantity = req.body.quantity === undefined ? 0 : req.body.quantity;
 
     const result = await pool.query(
       `insert into 
         parts(name,description,category_id,quantity,unit_price)
-        values($1,$2,
-        (select id from categories where name = $3),
-        $4,$5)
+        values($1,$2,$3,$4,$5)
         returning *`,
-      [name, description, category, quantity, unit_price],
+      [name, description, category_id, quantity, unit_price],
     );
 
     return res.status(201).json(result.rows[0]);

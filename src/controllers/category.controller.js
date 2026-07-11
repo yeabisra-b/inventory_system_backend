@@ -121,7 +121,7 @@ export const deleteCategory = async (req, res) => {
     }
     return res.status(200).json(result.rows[0]);
   } catch (err) {
-    console.error(err.code);
+    console.error(err);
     return res.status(500).json({ message: "server error" });
   }
 };
