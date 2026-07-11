@@ -2,7 +2,29 @@ import { pool } from "../db/db.js";
 
 export const getAllStockMovements = async (req, res) => {
   try {
-    const result = await pool.query(`select * from stock_movements`);
+    const result = await pool.query(`
+      SELECT
+        sm.id,
+        sm.part_id,
+        p.name          AS part_name,
+        sm.movement_type,
+        sm.quantity,
+        sm.reason,
+        sm.movement_date,
+        SUM(
+          CASE sm.movement_type
+            WHEN 'IN'  THEN  sm.quantity
+            WHEN 'OUT' THEN -sm.quantity
+          END
+        ) OVER (
+          PARTITION BY sm.part_id
+          ORDER BY sm.movement_date, sm.id
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS remaining_stock
+      FROM stock_movements sm
+      JOIN parts p ON p.id = sm.part_id
+      ORDER BY sm.movement_date DESC, sm.id DESC
+    `);
     return res.status(200).json(result.rows);
   } catch (err) {
     console.error(err);
