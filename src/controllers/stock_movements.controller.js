@@ -10,6 +10,7 @@ export const getAllStockMovements = async (req, res) => {
         sm.movement_type,
         sm.quantity,
         sm.reason,
+        sm.unit_price,
         sm.movement_date,
         SUM(
           CASE sm.movement_type
@@ -65,8 +66,8 @@ export const stockIn = async (req, res) => {
 
     const result = await client.query(
       `insert into 
-      stock_movements(movement_type,part_id,quantity,reason)
-      values('IN',$1,$2,$3) returning *`,
+      stock_movements(movement_type,part_id,quantity,reason,unit_price)
+      values('IN',$1,$2,$3, (select unit_price from parts where id = $1)) returning *`,
       [part_id, quantity, reason],
     );
 
@@ -101,8 +102,8 @@ export const stockOut = async (req, res) => {
 
     const result = await client.query(
       `insert into 
-      stock_movements(movement_type,part_id,quantity,reason)
-      values('OUT',$1,$2,$3) returning *`,
+      stock_movements(movement_type,part_id,quantity,reason,unit_price)
+      values('OUT',$1,$2,$3, (select unit_price from parts where id = $1)) returning *`,
       [part_id, quantity, reason],
     );
 
