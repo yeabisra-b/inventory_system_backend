@@ -41,13 +41,18 @@ export const createPart = async (req, res) => {
     const { name, description, category_id, unit_price } = req.body;
 
     const quantity = req.body.quantity === undefined ? 0 : req.body.quantity;
+    const low_bound = req.body.low_bound === undefined ? 0 : req.body.low_bound;
 
     const result = await pool.query(
-      `insert into 
-        parts(name,description,category_id,quantity,unit_price)
-        values($1,$2,$3,$4,$5)
-        returning *`,
-      [name, description, category_id, quantity, unit_price],
+      `WITH inserted AS (
+         insert into parts(name,description,category_id,quantity,unit_price,low_bound)
+         values($1,$2,$3,$4,$5,$6)
+         returning *
+       )
+       SELECT i.*, c.name as category
+       FROM inserted i
+       LEFT JOIN categories c ON i.category_id = c.id`,
+      [name, description, category_id, quantity, unit_price, low_bound],
     );
 
     return res.status(201).json(result.rows[0]);
@@ -78,7 +83,7 @@ export const updatePart = async (req, res) => {
       return res.status(404).json({ message: "part not found" });
     }
 
-    let { name, description, quantity, unit_price, category_id, category } = {
+    let { name, description, quantity, unit_price, category_id, category, low_bound } = {
       ...db_result.rows[0],
       ...req.body,
     };
@@ -105,16 +110,22 @@ export const updatePart = async (req, res) => {
     }
 
     const result = await pool.query(
-      ` update parts
-        set name = $1,
-        description = $2,
-        unit_price = $3,
-        quantity = $4,
-        category_id = $5,
-        updated_at = CURRENT_TIMESTAMP
-        where id = $6
-        returning *`,
-      [validatedName, description, unit_price, quantity, category_id, id],
+      `WITH updated AS (
+         update parts
+         set name = $1,
+         description = $2,
+         unit_price = $3,
+         quantity = $4,
+         category_id = $5,
+         low_bound = $6,
+         updated_at = CURRENT_TIMESTAMP
+         where id = $7
+         returning *
+       )
+       SELECT u.*, c.name as category
+       FROM updated u
+       LEFT JOIN categories c ON u.category_id = c.id`,
+      [validatedName, description, unit_price, quantity, category_id, low_bound, id],
     );
 
     return res.status(200).json(result.rows[0]);

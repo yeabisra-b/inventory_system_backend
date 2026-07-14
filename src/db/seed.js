@@ -177,9 +177,9 @@ async function seedDatabase() {
 
       for (const movement of part.movements) {
         await client.query(
-          `INSERT INTO stock_movements (part_id, movement_type, quantity, reason)
-           VALUES ($1, $2, $3, $4)`,
-          [partId, movement.type, movement.quantity, movement.reason],
+          `INSERT INTO stock_movements (part_id, movement_type, quantity, reason, unit_price)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [partId, movement.type, movement.quantity, movement.reason, part.unit_price],
         );
 
         currentQuantity +=

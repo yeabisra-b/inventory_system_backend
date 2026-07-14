@@ -22,9 +22,9 @@ export const getDashboardStats = async (req, res) => {
     );
     stats.total_stock_value = parseFloat(valueResult.rows[0].total_value) || 0;
 
-    // 4. Low stock parts (active parts with quantity <= 5)
+    // 4. Low stock parts (active parts with quantity <= low_bound)
     const lowStockResult = await pool.query(
-      `SELECT id, name, quantity, unit_price FROM parts WHERE is_active = true AND quantity <= 5 ORDER BY quantity ASC LIMIT 5`
+      `SELECT id, name, quantity, low_bound, unit_price FROM parts WHERE is_active = true AND quantity <= low_bound ORDER BY quantity ASC LIMIT 50`
     );
     stats.low_stock_parts = lowStockResult.rows;
 
@@ -33,7 +33,7 @@ export const getDashboardStats = async (req, res) => {
       `SELECT sm.id, sm.movement_type, sm.quantity, sm.movement_date, p.name as part_name 
        FROM stock_movements sm 
        JOIN parts p ON sm.part_id = p.id 
-       ORDER BY sm.movement_date DESC LIMIT 5`
+       ORDER BY sm.movement_date DESC LIMIT 50`
     );
     stats.recent_movements = recentMovementsResult.rows;
 
