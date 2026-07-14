@@ -72,12 +72,17 @@ export const stockIn = async (req, res) => {
     );
 
     const update_quantity = await client.query(
-      `update parts set quantity = quantity + $1 where id = $2`,
+      `update parts set quantity = quantity + $1 where id = $2 returning name, quantity`,
       [quantity, part_id],
     );
 
     await client.query("COMMIT");
-    return res.status(201).json(result.rows[0]);
+    
+    const movement = result.rows[0];
+    movement.part_name = update_quantity.rows[0].name;
+    movement.remaining_stock = update_quantity.rows[0].quantity;
+    
+    return res.status(201).json(movement);
   } catch (err) {
     await client.query("ROLLBACK");
     console.error(err);
@@ -108,13 +113,17 @@ export const stockOut = async (req, res) => {
     );
 
     const update_quantity = await client.query(
-      `update parts set quantity = quantity - $1 where id = $2`,
+      `update parts set quantity = quantity - $1 where id = $2 returning name, quantity`,
       [quantity, part_id],
     );
 
     await client.query("COMMIT");
 
-    return res.status(201).json(result.rows[0]);
+    const movement = result.rows[0];
+    movement.part_name = update_quantity.rows[0].name;
+    movement.remaining_stock = update_quantity.rows[0].quantity;
+
+    return res.status(201).json(movement);
   } catch (err) {
     await client.query("ROLLBACK");
     console.error(err);
