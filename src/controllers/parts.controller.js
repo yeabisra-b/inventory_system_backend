@@ -153,6 +153,30 @@ export const deactivatePart = async (req, res) => {
   }
 };
 
+export const activatePart = async (req, res) => {
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ message: "Invalid part id" });
+    }
+    const result = await pool.query(
+      `update parts
+         set is_active = true, updated_at = CURRENT_TIMESTAMP
+         where id = $1
+          returning *`,
+      [id],
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ message: "Part not found" });
+    }
+    return res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 export const searchParts = async (req, res) => {
   try {
     const { q, category } = req.query;
