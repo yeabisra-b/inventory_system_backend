@@ -4,7 +4,7 @@ import {
   getPartByID,
   createPart,
   updatePart,
-  deletePart,
+  deactivatePart,
   searchParts,
 } from "../controllers/parts.controller.js";
 
@@ -15,6 +15,6 @@ router.get("/search", searchParts);
 router.post("/", createPart);
 router.get("/:id", getPartByID);
 router.put("/:id", updatePart);
-router.delete("/:id", deletePart);
+router.delete("/:id", deactivatePart);
 
 export default router;

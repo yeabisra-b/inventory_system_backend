@@ -129,14 +129,15 @@ export const updatePart = async (req, res) => {
   }
 };
 
-export const deletePart = async (req, res) => {
+export const deactivatePart = async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(id)) {
       return res.status(400).json({ message: "Invalid part id" });
     }
     const result = await pool.query(
-      `delete from parts
+      `update parts
+         set is_active = false, updated_at = CURRENT_TIMESTAMP
          where id = $1
           returning *`,
       [id],
@@ -146,11 +147,6 @@ export const deletePart = async (req, res) => {
     }
     return res.status(200).json(result.rows[0]);
   } catch (err) {
-    if (err.code === "23503") {
-      return res.status(409).json({
-        message: "Cannot delete a part that has stock movement history.",
-      });
-    }
     console.error(err);
 
     return res.status(500).json({ message: "Internal server error" });
