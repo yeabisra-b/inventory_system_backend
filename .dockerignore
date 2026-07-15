@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+.env
+.git
+.gitignore
+docs
+API_ENDPOINTS.md
+*.md
