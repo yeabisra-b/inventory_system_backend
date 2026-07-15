@@ -1,4 +1,5 @@
 import { pool } from "../db/db.js";
+import { stockIn } from "./stock_movements.controller.js";
 
 export const getParts = async (req, res) => {
   try {
@@ -42,7 +43,6 @@ export const createPart = async (req, res) => {
 
     const quantity = req.body.quantity === undefined ? 0 : req.body.quantity;
     const low_bound = req.body.low_bound === undefined ? 0 : req.body.low_bound;
-
     const result = await pool.query(
       `WITH inserted AS (
          insert into parts(name,description,category_id,quantity,unit_price,low_bound)
@@ -54,6 +54,13 @@ export const createPart = async (req, res) => {
        LEFT JOIN categories c ON i.category_id = c.id`,
       [name, description, category_id, quantity, unit_price, low_bound],
     );
+    if (quantity > 0) {
+      await pool.query(
+        `insert into stock_movements(movement_type, part_id, quantity, reason, unit_price)
+         values('IN', $1, $2, 'Initial Stock', $3)`,
+        [result.rows[0].id, quantity, unit_price]
+      );
+    }
 
     return res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -83,7 +90,15 @@ export const updatePart = async (req, res) => {
       return res.status(404).json({ message: "part not found" });
     }
 
-    let { name, description, quantity, unit_price, category_id, category, low_bound } = {
+    let {
+      name,
+      description,
+      quantity,
+      unit_price,
+      category_id,
+      category,
+      low_bound,
+    } = {
       ...db_result.rows[0],
       ...req.body,
     };
@@ -125,7 +140,15 @@ export const updatePart = async (req, res) => {
        SELECT u.*, c.name as category
        FROM updated u
        LEFT JOIN categories c ON u.category_id = c.id`,
-      [validatedName, description, unit_price, quantity, category_id, low_bound, id],
+      [
+        validatedName,
+        description,
+        unit_price,
+        quantity,
+        category_id,
+        low_bound,
+        id,
+      ],
     );
 
     return res.status(200).json(result.rows[0]);
