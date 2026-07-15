@@ -139,6 +139,13 @@ const parts = [
   },
 ];
 
+function getRandomDateLastMonth() {
+  const now = new Date();
+  // Random time within the last 30 days
+  const past = new Date(now.getTime() - Math.random() * 30 * 24 * 60 * 60 * 1000);
+  return past;
+}
+
 async function seedDatabase() {
   const client = await pool.connect();
 
@@ -161,25 +168,29 @@ async function seedDatabase() {
     for (const part of parts) {
       const categoryId = categoryIds.get(part.category);
 
+      const partDate = getRandomDateLastMonth();
+
       const partResult = await client.query(
-        `INSERT INTO parts (name, description, category_id, quantity, unit_price)
-         VALUES ($1, $2, $3, 0, $4)
+        `INSERT INTO parts (name, description, category_id, quantity, unit_price, created_at, updated_at)
+         VALUES ($1, $2, $3, 0, $4, $5, $5)
          ON CONFLICT (name) DO UPDATE SET
            description = EXCLUDED.description,
            category_id = EXCLUDED.category_id,
-           unit_price = EXCLUDED.unit_price
+           unit_price = EXCLUDED.unit_price,
+           updated_at = EXCLUDED.updated_at
          RETURNING id`,
-        [part.name, part.description, categoryId, part.unit_price],
+        [part.name, part.description, categoryId, part.unit_price, partDate],
       );
 
       const partId = partResult.rows[0].id;
       let currentQuantity = 0;
 
       for (const movement of part.movements) {
+        const movementDate = new Date(partDate.getTime() + Math.random() * (Date.now() - partDate.getTime()));
         await client.query(
-          `INSERT INTO stock_movements (part_id, movement_type, quantity, reason, unit_price)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [partId, movement.type, movement.quantity, movement.reason, part.unit_price],
+          `INSERT INTO stock_movements (part_id, movement_type, quantity, reason, unit_price, movement_date)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [partId, movement.type, movement.quantity, movement.reason, part.unit_price, movementDate],
         );
 
         currentQuantity +=

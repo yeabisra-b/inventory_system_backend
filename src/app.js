@@ -6,6 +6,7 @@ import partRoutes from "./routes/parts.routes.js";
 import stockRoutes from "./routes/stock_movements.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import backupRoutes from "./routes/backup.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 import { pool } from "./db/db.js";
 
 const app = express();
@@ -19,6 +20,7 @@ app.use("/parts", partRoutes);
 app.use("/stock_movements", stockRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/backup", backupRoutes);
+app.use("/deleteall", adminRoutes);
 
 app.get("/health", async (req, res) => {
   const startTime = Date.now();
