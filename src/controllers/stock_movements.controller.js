@@ -85,13 +85,13 @@ export const stockIn = async (req, res) => {
     return res.status(201).json(movement);
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error(err);
-
-    if (err.code === "23503") {
+    // 23503 is foreign key violation. 23502 is not null violation (happens if subquery returns null for unit_price)
+    if (err.code === "23503" || err.code === "23502") {
       return res.status(400).json({
         message: "Part doesn't exist",
       });
     }
+    console.error(err);
     return res.status(500).json({ message: "Internal server error" });
   } finally {
     client.release();
@@ -126,19 +126,19 @@ export const stockOut = async (req, res) => {
     return res.status(201).json(movement);
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error(err);
 
     if (err.code === "23514") {
       return res.status(400).json({
         message: "Insufficient inventory stock.",
       });
     }
-    if (err.code === "23503") {
+    if (err.code === "23503" || err.code === "23502") {
       return res.status(400).json({
         message: "Part doesn't exist",
       });
     }
 
+    console.error(err);
     return res.status(500).json({ message: "Internal server error" });
   } finally {
     client.release();
