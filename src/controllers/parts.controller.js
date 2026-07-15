@@ -1,15 +1,20 @@
-import { pool } from "../db/db.js";
-import { stockIn } from "./stock_movements.controller.js";
+import { Part, Category, StockMovement } from "../models/index.js";
+import { Op } from "sequelize";
 
 export const getParts = async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT p.*, c.name as category 
-      FROM parts p 
-      LEFT JOIN categories c ON p.category_id = c.id
-      ORDER BY p.id ASC
-    `);
-    return res.status(200).json(result.rows);
+    const parts = await Part.findAll({
+      include: [{ model: Category, as: "category", attributes: ["name"] }],
+      order: [["id", "ASC"]],
+    });
+    
+    const result = parts.map((p) => {
+      const part = p.toJSON();
+      part.category = part.category?.name;
+      return part;
+    });
+
+    return res.status(200).json(result);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "server error" });
@@ -24,13 +29,13 @@ export const getPartByID = async (req, res) => {
       return res.status(400).json({ message: "Invalid part id" });
     }
 
-    const result = await pool.query(`select * from parts where id=$1`, [id]);
+    const part = await Part.findByPk(id);
 
-    if (result.rows.length === 0) {
+    if (!part) {
       return res.status(404).json({ message: "part not found" });
     }
 
-    return res.status(200).json(result.rows[0]);
+    return res.status(200).json(part);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "server error" });
@@ -43,35 +48,47 @@ export const createPart = async (req, res) => {
 
     const quantity = req.body.quantity === undefined ? 0 : req.body.quantity;
     const low_bound = req.body.low_bound === undefined ? 0 : req.body.low_bound;
-    const result = await pool.query(
-      `WITH inserted AS (
-         insert into parts(name,description,category_id,quantity,unit_price,low_bound)
-         values($1,$2,$3,$4,$5,$6)
-         returning *
-       )
-       SELECT i.*, c.name as category
-       FROM inserted i
-       LEFT JOIN categories c ON i.category_id = c.id`,
-      [name, description, category_id, quantity, unit_price, low_bound],
-    );
-    if (quantity > 0) {
-      await pool.query(
-        `insert into stock_movements(movement_type, part_id, quantity, reason, unit_price)
-         values('IN', $1, $2, 'Initial Stock', $3)`,
-        [result.rows[0].id, quantity, unit_price]
-      );
+
+    const validatedName = typeof name === "string" ? name.trim() : "";
+
+    if (!validatedName) {
+      return res.status(400).json({ message: "Part name is required" });
     }
 
-    return res.status(201).json(result.rows[0]);
+    const part = await Part.create({
+      name: validatedName,
+      description,
+      category_id,
+      quantity,
+      unit_price,
+      low_bound,
+    });
+
+    if (quantity > 0) {
+      await StockMovement.create({
+        movement_type: "IN",
+        part_id: part.id,
+        quantity,
+        reason: "Initial Stock",
+        unit_price,
+      });
+    }
+
+    const partWithCategory = await Part.findByPk(part.id, {
+      include: [{ model: Category, as: "category", attributes: ["name"] }],
+    });
+
+    const result = partWithCategory.toJSON();
+    result.category = result.category?.name;
+
+    return res.status(201).json(result);
   } catch (err) {
-    if (err.code === "23505") {
+    if (err.name === "SequelizeUniqueConstraintError") {
       return res.status(409).json({
         message: "Part already exists.",
       });
     }
-
     console.error(err);
-
     return res.status(500).json({ message: "server error" });
   }
 };
@@ -84,9 +101,9 @@ export const updatePart = async (req, res) => {
       return res.status(400).json({ message: "Invalid Part id" });
     }
 
-    const db_result = await pool.query(`select * from parts where id=$1`, [id]);
+    const part = await Part.findByPk(id);
 
-    if (db_result.rows.length === 0) {
+    if (!part) {
       return res.status(404).json({ message: "part not found" });
     }
 
@@ -96,64 +113,46 @@ export const updatePart = async (req, res) => {
       quantity,
       unit_price,
       category_id,
-      category,
+      category: categoryName,
       low_bound,
-    } = {
-      ...db_result.rows[0],
-      ...req.body,
-    };
+    } = req.body;
 
-    if (category) {
-      const category_id_array = await pool.query(
-        `select id from categories where name = $1`,
-        [category],
-      );
-
-      if (category_id_array.rows.length === 0) {
+    if (categoryName) {
+      const cat = await Category.findOne({ where: { name: categoryName } });
+      if (!cat) {
         return res
           .status(404)
           .json({ message: "category with that name doesn't exist" });
       }
-
-      category_id = category_id_array.rows[0].id;
+      category_id = cat.id;
     }
 
-    const validatedName = typeof name === "string" ? name.trim() : "";
+    const validatedName = name !== undefined ? name.trim() : part.name;
 
     if (!validatedName) {
       return res.status(400).json({ message: "Part name is required" });
     }
 
-    const result = await pool.query(
-      `WITH updated AS (
-         update parts
-         set name = $1,
-         description = $2,
-         unit_price = $3,
-         quantity = $4,
-         category_id = $5,
-         low_bound = $6,
-         updated_at = CURRENT_TIMESTAMP
-         where id = $7
-         returning *
-       )
-       SELECT u.*, c.name as category
-       FROM updated u
-       LEFT JOIN categories c ON u.category_id = c.id`,
-      [
-        validatedName,
-        description,
-        unit_price,
-        quantity,
-        category_id,
-        low_bound,
-        id,
-      ],
-    );
+    await part.update({
+      name: validatedName,
+      description: description !== undefined ? description : part.description,
+      unit_price: unit_price !== undefined ? unit_price : part.unit_price,
+      quantity: quantity !== undefined ? quantity : part.quantity,
+      category_id: category_id !== undefined ? category_id : part.category_id,
+      low_bound: low_bound !== undefined ? low_bound : part.low_bound,
+      updated_at: new Date(),
+    });
 
-    return res.status(200).json(result.rows[0]);
+    const partWithCategory = await Part.findByPk(part.id, {
+      include: [{ model: Category, as: "category", attributes: ["name"] }],
+    });
+
+    const result = partWithCategory.toJSON();
+    result.category = result.category?.name;
+
+    return res.status(200).json(result);
   } catch (err) {
-    if (err.code === "23505") {
+    if (err.name === "SequelizeUniqueConstraintError") {
       return res.status(409).json({
         message: "A part with that name already exists.",
       });
@@ -169,20 +168,17 @@ export const deactivatePart = async (req, res) => {
     if (!Number.isInteger(id)) {
       return res.status(400).json({ message: "Invalid part id" });
     }
-    const result = await pool.query(
-      `update parts
-         set is_active = false, updated_at = CURRENT_TIMESTAMP
-         where id = $1
-          returning *`,
-      [id],
-    );
-    if (!result.rows[0]) {
+    
+    const part = await Part.findByPk(id);
+    if (!part) {
       return res.status(404).json({ message: "Part not found" });
     }
-    return res.status(200).json(result.rows[0]);
+
+    await part.update({ is_active: false, updated_at: new Date() });
+    
+    return res.status(200).json(part);
   } catch (err) {
     console.error(err);
-
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -193,20 +189,17 @@ export const activatePart = async (req, res) => {
     if (!Number.isInteger(id)) {
       return res.status(400).json({ message: "Invalid part id" });
     }
-    const result = await pool.query(
-      `update parts
-         set is_active = true, updated_at = CURRENT_TIMESTAMP
-         where id = $1
-          returning *`,
-      [id],
-    );
-    if (!result.rows[0]) {
+    
+    const part = await Part.findByPk(id);
+    if (!part) {
       return res.status(404).json({ message: "Part not found" });
     }
-    return res.status(200).json(result.rows[0]);
+
+    await part.update({ is_active: true, updated_at: new Date() });
+    
+    return res.status(200).json(part);
   } catch (err) {
     console.error(err);
-
     return res.status(500).json({ message: "Internal server error" });
   }
 };
@@ -222,26 +215,28 @@ export const searchParts = async (req, res) => {
         message: "Search term is required.",
       });
     }
-    let query = `select p.*,
-                        c.name as category 
-                        from parts p
-                        join categories c
-                        on p.category_id = c.id
-                        where p.name ilike '%' || $1 || '%'
-                        `;
 
-    let query_parameters = [searchTerm];
+    const where = {
+      name: { [Op.iLike]: `%${searchTerm}%` },
+    };
+
+    const include = [{ model: Category, as: "category", attributes: ["name"] }];
+    
     if (category?.trim()) {
-      query += ` and c.name = $2`;
-      query_parameters.push(category);
+      include[0].where = { name: category.trim() };
     }
 
-    const result = await pool.query(query, query_parameters);
+    const parts = await Part.findAll({ where, include });
 
-    return res.status(200).json(result.rows);
+    const result = parts.map((p) => {
+      const part = p.toJSON();
+      part.category = part.category?.name;
+      return part;
+    });
+
+    return res.status(200).json(result);
   } catch (err) {
     console.error(err);
-
     return res.status(500).json({
       message: "Internal server error",
     });

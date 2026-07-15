@@ -1,4 +1,5 @@
-import { pool } from "./db.js";
+import { sequelize } from "../models/index.js";
+import { Category, Part, StockMovement } from "../models/index.js";
 
 const categories = [
   { name: "Brakes", description: "Brake components and safety parts" },
@@ -147,70 +148,67 @@ function getRandomDateLastMonth() {
 }
 
 async function seedDatabase() {
-  const client = await pool.connect();
-
   try {
-    await client.query("BEGIN");
+    await sequelize.transaction(async (t) => {
+      const categoryIds = new Map();
 
-    const categoryIds = new Map();
-
-    for (const category of categories) {
-      const result = await client.query(
-        `INSERT INTO categories (name, description)
-         VALUES ($1, $2)
-         ON CONFLICT (name) DO UPDATE SET description = EXCLUDED.description
-         RETURNING id`,
-        [category.name, category.description],
-      );
-      categoryIds.set(category.name, result.rows[0].id);
-    }
-
-    for (const part of parts) {
-      const categoryId = categoryIds.get(part.category);
-
-      const partDate = getRandomDateLastMonth();
-
-      const partResult = await client.query(
-        `INSERT INTO parts (name, description, category_id, quantity, unit_price, created_at, updated_at)
-         VALUES ($1, $2, $3, 0, $4, $5, $5)
-         ON CONFLICT (name) DO UPDATE SET
-           description = EXCLUDED.description,
-           category_id = EXCLUDED.category_id,
-           unit_price = EXCLUDED.unit_price,
-           updated_at = EXCLUDED.updated_at
-         RETURNING id`,
-        [part.name, part.description, categoryId, part.unit_price, partDate],
-      );
-
-      const partId = partResult.rows[0].id;
-      let currentQuantity = 0;
-
-      for (const movement of part.movements) {
-        const movementDate = new Date(partDate.getTime() + Math.random() * (Date.now() - partDate.getTime()));
-        await client.query(
-          `INSERT INTO stock_movements (part_id, movement_type, quantity, reason, unit_price, movement_date)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [partId, movement.type, movement.quantity, movement.reason, part.unit_price, movementDate],
+      for (const category of categories) {
+        const [cat] = await Category.upsert(
+          { name: category.name, description: category.description },
+          { transaction: t, returning: true }
         );
-
-        currentQuantity +=
-          movement.type === "IN" ? movement.quantity : -movement.quantity;
+        categoryIds.set(category.name, cat.id);
       }
 
-      await client.query(`UPDATE parts SET quantity = $1 WHERE id = $2`, [
-        currentQuantity,
-        partId,
-      ]);
-    }
+      for (const part of parts) {
+        const categoryId = categoryIds.get(part.category);
+        const partDate = getRandomDateLastMonth();
 
-    await client.query("COMMIT");
+        const [dbPart, created] = await Part.upsert(
+          {
+            name: part.name,
+            description: part.description,
+            category_id: categoryId,
+            quantity: 0,
+            unit_price: part.unit_price,
+            created_at: partDate,
+            updated_at: partDate,
+          },
+          { transaction: t, returning: true }
+        );
+
+        let currentQuantity = 0;
+
+        for (const movement of part.movements) {
+          const movementDate = new Date(
+            partDate.getTime() + Math.random() * (Date.now() - partDate.getTime())
+          );
+          await StockMovement.create(
+            {
+              part_id: dbPart.id,
+              movement_type: movement.type,
+              quantity: movement.quantity,
+              reason: movement.reason,
+              unit_price: part.unit_price,
+              movement_date: movementDate,
+            },
+            { transaction: t }
+          );
+
+          currentQuantity +=
+            movement.type === "IN" ? movement.quantity : -movement.quantity;
+        }
+
+        await dbPart.update({ quantity: currentQuantity }, { transaction: t });
+      }
+    });
+
     console.log("Database seeded successfully with 3 categories and 15 parts.");
   } catch (error) {
-    await client.query("ROLLBACK");
     console.error("Seed failed:", error);
     process.exitCode = 1;
   } finally {
-    client.release();
+    await sequelize.close();
   }
 }
 

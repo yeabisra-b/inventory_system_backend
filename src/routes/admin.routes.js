@@ -1,12 +1,12 @@
 import express from "express";
-import { pool } from "../db/db.js";
+import { sequelize } from "../models/index.js";
 
 const router = express.Router();
 
 // Destructive endpoint to clear all data
 router.delete("/", async (req, res) => {
   try {
-    await pool.query(
+    await sequelize.query(
       "TRUNCATE TABLE stock_movements, parts, categories RESTART IDENTITY CASCADE"
     );
     res.json({ message: "All database records have been deleted successfully." });

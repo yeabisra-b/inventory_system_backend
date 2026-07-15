@@ -9,7 +9,7 @@ import {
 const router = Router();
 
 router.get("/", getAllStockMovements);
-router.get("/:id", getStockMovementByPartID);
+router.get("/part/:id", getStockMovementByPartID);
 router.post("/in/", stockIn);
 router.post("/out", stockOut);
 

@@ -1,8 +1,9 @@
-import { pool } from "../db/db.js";
+import { sequelize, StockMovement, Part } from "../models/index.js";
+import { QueryTypes } from "sequelize";
 
 export const getAllStockMovements = async (req, res) => {
   try {
-    const result = await pool.query(`
+    const query = `
       SELECT
         sm.id,
         sm.part_id,
@@ -25,8 +26,11 @@ export const getAllStockMovements = async (req, res) => {
       FROM stock_movements sm
       JOIN parts p ON p.id = sm.part_id
       ORDER BY sm.movement_date DESC, sm.id DESC
-    `);
-    return res.status(200).json(result.rows);
+    `;
+    
+    // We use sequelize.query for window functions which are complex to map in pure ORM syntax
+    const movements = await sequelize.query(query, { type: QueryTypes.SELECT });
+    return res.status(200).json(movements);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Internal server error" });
@@ -41,16 +45,15 @@ export const getStockMovementByPartID = async (req, res) => {
       return res.status(400).json({ message: "Invalid Part id" });
     }
 
-    const result = await pool.query(
-      `select * from stock_movements where part_id = $1 `,
-      [id],
-    );
+    const movements = await StockMovement.findAll({
+      where: { part_id: id }
+    });
 
-    if (result.rows.length === 0) {
+    if (movements.length === 0) {
       return res.status(404).json({ message: "stock movement not found" });
     }
 
-    return res.status(200).json(result.rows);
+    return res.status(200).json(movements);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Internal server error" });
@@ -58,89 +61,84 @@ export const getStockMovementByPartID = async (req, res) => {
 };
 
 export const stockIn = async (req, res) => {
-  const client = await pool.connect();
   try {
-    const { part_id, quantity, reason } = { ...req.body };
+    const { part_id, quantity, reason } = req.body;
 
-    await client.query("BEGIN");
+    const movement = await sequelize.transaction(async (t) => {
+      const part = await Part.findByPk(part_id, { transaction: t });
+      
+      if (!part) {
+        throw new Error("PartNotFound");
+      }
 
-    const result = await client.query(
-      `insert into 
-      stock_movements(movement_type,part_id,quantity,reason,unit_price)
-      values('IN',$1,$2,$3, (select unit_price from parts where id = $1)) returning *`,
-      [part_id, quantity, reason],
-    );
+      const newMovement = await StockMovement.create({
+        movement_type: 'IN',
+        part_id,
+        quantity,
+        reason,
+        unit_price: part.unit_price
+      }, { transaction: t });
 
-    const update_quantity = await client.query(
-      `update parts set quantity = quantity + $1 where id = $2 returning name, quantity`,
-      [quantity, part_id],
-    );
+      part.quantity += quantity;
+      await part.save({ transaction: t });
 
-    await client.query("COMMIT");
-    
-    const movement = result.rows[0];
-    movement.part_name = update_quantity.rows[0].name;
-    movement.remaining_stock = update_quantity.rows[0].quantity;
-    
+      const result = newMovement.toJSON();
+      result.part_name = part.name;
+      result.remaining_stock = part.quantity;
+      return result;
+    });
+
     return res.status(201).json(movement);
   } catch (err) {
-    await client.query("ROLLBACK");
-    // 23503 is foreign key violation. 23502 is not null violation (happens if subquery returns null for unit_price)
-    if (err.code === "23503" || err.code === "23502") {
-      return res.status(400).json({
-        message: "Part doesn't exist",
-      });
+    if (err.message === "PartNotFound") {
+      return res.status(400).json({ message: "Part doesn't exist" });
     }
     console.error(err);
     return res.status(500).json({ message: "Internal server error" });
-  } finally {
-    client.release();
   }
 };
 
 export const stockOut = async (req, res) => {
-  const client = await pool.connect();
   try {
-    const { part_id, quantity, reason } = { ...req.body };
+    const { part_id, quantity, reason } = req.body;
 
-    await client.query("BEGIN");
+    const movement = await sequelize.transaction(async (t) => {
+      const part = await Part.findByPk(part_id, { transaction: t });
+      
+      if (!part) {
+        throw new Error("PartNotFound");
+      }
 
-    const result = await client.query(
-      `insert into 
-      stock_movements(movement_type,part_id,quantity,reason,unit_price)
-      values('OUT',$1,$2,$3, (select unit_price from parts where id = $1)) returning *`,
-      [part_id, quantity, reason],
-    );
+      if (part.quantity < quantity) {
+        throw new Error("InsufficientStock");
+      }
 
-    const update_quantity = await client.query(
-      `update parts set quantity = quantity - $1 where id = $2 returning name, quantity`,
-      [quantity, part_id],
-    );
+      const newMovement = await StockMovement.create({
+        movement_type: 'OUT',
+        part_id,
+        quantity,
+        reason,
+        unit_price: part.unit_price
+      }, { transaction: t });
 
-    await client.query("COMMIT");
+      part.quantity -= quantity;
+      await part.save({ transaction: t });
 
-    const movement = result.rows[0];
-    movement.part_name = update_quantity.rows[0].name;
-    movement.remaining_stock = update_quantity.rows[0].quantity;
+      const result = newMovement.toJSON();
+      result.part_name = part.name;
+      result.remaining_stock = part.quantity;
+      return result;
+    });
 
     return res.status(201).json(movement);
   } catch (err) {
-    await client.query("ROLLBACK");
-
-    if (err.code === "23514") {
-      return res.status(400).json({
-        message: "Insufficient inventory stock.",
-      });
+    if (err.message === "InsufficientStock" || err.name === "SequelizeDatabaseError") {
+      return res.status(400).json({ message: "Insufficient inventory stock." });
     }
-    if (err.code === "23503" || err.code === "23502") {
-      return res.status(400).json({
-        message: "Part doesn't exist",
-      });
+    if (err.message === "PartNotFound") {
+      return res.status(400).json({ message: "Part doesn't exist" });
     }
-
     console.error(err);
     return res.status(500).json({ message: "Internal server error" });
-  } finally {
-    client.release();
   }
 };

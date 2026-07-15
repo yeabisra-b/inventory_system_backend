@@ -20,12 +20,22 @@
   - [GET /parts/:id](#get-partsid)
   - [POST /parts](#post-parts)
   - [PUT /parts/:id](#put-partsid)
-  - [DELETE /parts/:id](#delete-partsid)
+  - [PATCH /parts/:id/deactivate](#patch-partsiddeactivate)
+  - [PATCH /parts/:id/activate](#patch-partsidactivate)
 - [Stock Movements](#stock-movements)
   - [GET /stock_movements](#get-stock_movements)
-  - [GET /stock_movements/:id](#get-stock_movementsid)
+  - [GET /stock_movements/part/:id](#get-stock_movementspartid)
   - [POST /stock_movements/in](#post-stock_movementsin)
   - [POST /stock_movements/out](#post-stock_movementsout)
+- [Dashboard](#dashboard)
+  - [GET /dashboard](#get-dashboard)
+  - [GET /dashboard/daily-sales](#get-dashboarddaily-sales)
+- [Backup](#backup)
+  - [GET /backup/export](#get-backupexport)
+  - [POST /backup/import](#post-backupimport)
+- [System Admin](#system-admin)
+  - [DELETE /deleteall](#delete-deleteall)
+  - [GET /health](#get-health)
 - [Error Handling](#error-handling)
 
 ---
@@ -258,6 +268,8 @@ Retrieves all parts.
     "description": "10k Ohm resistor",
     "category_id": 1,
     "quantity": 500,
+    "is_active": true,
+    "low_bound": 10,
     "unit_price": "0.05",
     "created_at": "2026-07-08T12:00:00.000Z",
     "updated_at": "2026-07-08T12:00:00.000Z"
@@ -303,6 +315,8 @@ GET /parts/search?q=resist&category=Electronics
     "name": "Resistor 10k",
     "description": "10k Ohm resistor",
     "quantity": 500,
+    "is_active": true,
+    "low_bound": 10,
     "unit_price": "0.05",
     "created_at": "2026-07-08T12:00:00.000Z",
     "updated_at": "2026-07-08T12:00:00.000Z",
@@ -350,6 +364,8 @@ Retrieves a single part by its ID.
   "description": "10k Ohm resistor",
   "category_id": 1,
   "quantity": 500,
+  "is_active": true,
+  "low_bound": 10,
   "unit_price": "0.05",
   "created_at": "2026-07-08T12:00:00.000Z",
   "updated_at": "2026-07-08T12:00:00.000Z"
@@ -370,6 +386,8 @@ Creates a new part. The category is referenced **by name**, and the server resol
 | `description` | string | No | — | Part description |
 | `category` | string | Yes | — | Category name (must match an existing category) |
 | `quantity` | integer | No | `0` | Initial stock quantity |
+| `low_bound` | integer | No | `0` | Lower bound for low-stock alerts |
+| `is_active` | boolean | No | `true` | Indicates if the part is active |
 | `unit_price` | number | Yes | — | Price per unit |
 
 **Example Request**
@@ -380,6 +398,8 @@ Creates a new part. The category is referenced **by name**, and the server resol
   "description": "10k Ohm resistor",
   "category": "Electronics",
   "quantity": 500,
+  "low_bound": 10,
+  "is_active": true,
   "unit_price": 0.05
 }
 ```
@@ -401,6 +421,8 @@ Creates a new part. The category is referenced **by name**, and the server resol
   "description": "10k Ohm resistor",
   "category_id": 1,
   "quantity": 500,
+  "is_active": true,
+  "low_bound": 10,
   "unit_price": "0.05",
   "created_at": "2026-07-08T12:00:00.000Z",
   "updated_at": "2026-07-08T12:00:00.000Z"
@@ -428,6 +450,8 @@ Updates an existing part. Supports **partial updates** — unspecified fields re
 | `category` | string | No | Category name to reassign the part to |
 | `category_id` | integer | No | Category ID to reassign the part to (used if `category` is not provided) |
 | `quantity` | integer | No | New stock quantity |
+| `low_bound` | integer | No | New low-stock threshold |
+| `is_active` | boolean | No | New active status |
 | `unit_price` | number | No | New unit price |
 
 **Example Request**
@@ -435,6 +459,8 @@ Updates an existing part. Supports **partial updates** — unspecified fields re
 ```json
 {
   "unit_price": 0.06,
+  "low_bound": 15,
+  "is_active": true,
   "category": "Passive Components"
 }
 ```
@@ -458,6 +484,8 @@ Updates an existing part. Supports **partial updates** — unspecified fields re
   "description": "10k Ohm resistor",
   "category_id": 3,
   "quantity": 500,
+  "is_active": true,
+  "low_bound": 15,
   "unit_price": "0.06",
   "created_at": "2026-07-08T12:00:00.000Z",
   "updated_at": "2026-07-09T01:00:00.000Z"
@@ -466,31 +494,63 @@ Updates an existing part. Supports **partial updates** — unspecified fields re
 
 ---
 
-### DELETE /parts/:id
+### PATCH /parts/:id/deactivate
 
-Deletes a part by ID. Returns the deleted part object. **Fails** if the part has associated stock movement history (foreign key constraint).
+Marks a part as **inactive** (`is_active = false`). The part remains in the database with its full history preserved. Use this instead of deleting when you want to hide a part from active inventory without losing stock movement history.
 
 **Path Parameters**
 
 | Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
+|-----------|------|----------|--------------|
 | `id` | integer | Yes | The part ID |
 
 **Response**
 
 | Status | Description |
 |--------|-------------|
-| `200 OK` | The deleted part object |
+| `200 OK` | The updated part object with `is_active: false` |
 | `400 Bad Request` | Invalid (non-integer) part ID |
 | `404 Not Found` | No part exists with the given ID |
-| `409 Conflict` | Part has stock movement history and cannot be deleted |
 | `500 Internal Server Error` | Database or server failure |
 
-**Example Response** `409 Conflict`
+**Example Response** `200 OK`
 
 ```json
 {
-  "message": "Cannot delete a part that has stock movement history."
+  "id": 3,
+  "name": "Caliper Kit",
+  "is_active": false
+}
+```
+
+---
+
+### PATCH /parts/:id/activate
+
+Marks a previously deactivated part as **active** (`is_active = true`), restoring it to active inventory.
+
+**Path Parameters**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|--------------|
+| `id` | integer | Yes | The part ID |
+
+**Response**
+
+| Status | Description |
+|--------|-------------|
+| `200 OK` | The updated part object with `is_active: true` |
+| `400 Bad Request` | Invalid (non-integer) part ID |
+| `404 Not Found` | No part exists with the given ID |
+| `500 Internal Server Error` | Database or server failure |
+
+**Example Response** `200 OK`
+
+```json
+{
+  "id": 3,
+  "name": "Caliper Kit",
+  "is_active": true
 }
 ```
 
@@ -536,7 +596,7 @@ Retrieves all stock movement records.
 
 ---
 
-### GET /stock_movements/:id
+### GET /stock_movements/part/:id
 
 Retrieves all stock movement records for a specific **part**.
 
@@ -671,6 +731,113 @@ Records a **stock-out** event. Subtracts the specified quantity from the part's 
   "message": "Part doesn't exist"
 }
 ```
+
+---
+
+## Dashboard
+
+Provides statistics and sales data for the inventory management system.
+
+---
+
+### GET /dashboard
+
+Retrieves high-level inventory and sales statistics.
+
+**Response**
+
+| Status | Description |
+|--------|-------------|
+| `200 OK` | Object containing total parts, total stock value, low stock items, and recent movements count |
+| `500 Internal Server Error` | Database or server failure |
+
+---
+
+### GET /dashboard/daily-sales
+
+Retrieves total sales income and items sold per day.
+
+**Query Parameters**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `days` | integer | No (default 7) | Number of days to include in the report |
+
+**Response**
+
+| Status | Description |
+|--------|-------------|
+| `200 OK` | Array of daily sales objects |
+| `500 Internal Server Error` | Database or server failure |
+
+---
+
+## Backup
+
+Handles database backups and restores.
+
+---
+
+### GET /backup/export
+
+Exports the entire database structure and data.
+
+**Response**
+
+| Status | Description |
+|--------|-------------|
+| `200 OK` | A raw `.sql` file download |
+| `500 Internal Server Error` | Database dump failed |
+
+---
+
+### POST /backup/import
+
+Imports a `.sql` file to restore the database.
+
+**Request Body**
+
+Must be a `multipart/form-data` request with a file field named `backup`.
+
+**Response**
+
+| Status | Description |
+|--------|-------------|
+| `200 OK` | Success message |
+| `400 Bad Request` | Missing file or invalid format |
+| `500 Internal Server Error` | Restore failed |
+
+---
+
+## System Admin
+
+Administrative and diagnostic endpoints.
+
+---
+
+### DELETE /deleteall
+
+**Destructive endpoint**: Deletes all data across all tables (`TRUNCATE ... CASCADE`). Used for system reset.
+
+**Response**
+
+| Status | Description |
+|--------|-------------|
+| `200 OK` | Success message |
+| `500 Internal Server Error` | Database or server failure |
+
+---
+
+### GET /health
+
+Returns the server health and database connectivity status.
+
+**Response**
+
+| Status | Description |
+|--------|-------------|
+| `200 OK` | JSON with server uptime and database response time |
+| `503 Service Unavailable` | Server is running but database is unreachable |
 
 ---
 

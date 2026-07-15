@@ -16,7 +16,7 @@ router.get("/search", searchParts);
 router.post("/", createPart);
 router.get("/:id", getPartByID);
 router.put("/:id", updatePart);
-router.delete("/:id", deactivatePart);
-router.put("/:id/activate", activatePart);
+router.patch("/:id/deactivate", deactivatePart);
+router.patch("/:id/activate", activatePart);
 
 export default router;
