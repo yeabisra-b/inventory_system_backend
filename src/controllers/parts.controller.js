@@ -222,19 +222,12 @@ export const searchParts = async (req, res) => {
         message: "Search term is required.",
       });
     }
-    let query = `select p.id,
-                        p.name,
-                        p.description,
-                        p.quantity,
-                        p.unit_price,
-                        p.created_at,
-                        p.updated_at,
-                        c.id as category_id,
+    let query = `select p.*,
                         c.name as category 
                         from parts p
                         join categories c
                         on p.category_id = c.id
-                        where p.name ilike $1 || '%'
+                        where p.name ilike '%' || $1 || '%'
                         `;
 
     let query_parameters = [searchTerm];
