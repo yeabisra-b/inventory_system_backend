@@ -23,28 +23,12 @@ app.use("/backup", backupRoutes);
 app.use("/deleteall", adminRoutes);
 
 app.get("/health", async (req, res) => {
-  const startTime = Date.now();
   try {
     await sequelize.authenticate();
-    return res.status(200).json({
-      status: "ok",
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-      database: {
-        status: "ok",
-        responseTimeMs: Date.now() - startTime,
-      },
-    });
+    return res.status(200).json({ status: "ok" });
   } catch (err) {
-    return res.status(503).json({
-      status: "error",
-      uptime: process.uptime(),
-      timestamp: new Date().toISOString(),
-      database: {
-        status: "unreachable",
-        error: err.message,
-      },
-    });
+    console.error("Health check DB failure:", err);
+    return res.status(503).json({ status: "error" });
   }
 });
 
